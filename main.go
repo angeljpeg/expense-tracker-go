@@ -1,12 +1,14 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 type TransactionType string
@@ -31,111 +33,181 @@ type UserActivity struct {
 	Transactions []Transaction `json:"transactions"`
 }
 
+// Estados de la app
+type state int
+
+const (
+	stateMenu state = iota
+	stateInputUsername
+	stateInputPassword
+	stateSuccess
+	stateError
+)
+
+type action int
+
+const (
+	actionLogin action = iota
+	actionRegister
+)
+
+type model struct {
+	state    state
+	action   action
+	username string
+	password string
+	input    textinput.Model
+	errorMsg string
+	userData UserActivity
+	session  string
+}
+
+func initialModel() model {
+	ti := textinput.New()
+	ti.Placeholder = "Enter a number"
+	ti.Focus()
+	ti.CharLimit = 32
+	ti.Width = 30
+
+	return model{
+		state: stateMenu,
+		input: ti,
+	}
+}
+
+func (m model) Init() tea.Cmd {
+	return textinput.Blink
+}
+
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch m.state {
+
+		case stateMenu:
+			switch msg.String() {
+			case "1":
+				m.action = actionRegister
+				m.state = stateInputUsername
+				m.input.Placeholder = "Username"
+				m.input.Reset()
+			case "2":
+				m.action = actionLogin
+				m.state = stateInputUsername
+				m.input.Placeholder = "Username"
+				m.input.Reset()
+			case "q", "ctrl+c":
+				return m, tea.Quit
+			}
+
+		case stateInputUsername:
+			if msg.Type == tea.KeyEnter {
+				m.username = m.input.Value()
+				m.state = stateInputPassword
+				m.input.Placeholder = "Password"
+				m.input.Reset()
+				return m, nil
+			}
+
+		case stateInputPassword:
+			if msg.Type == tea.KeyEnter {
+				m.password = m.input.Value()
+				var user UserActivity
+				var err error
+
+				if m.action == actionLogin {
+					user, err = login(m.username, m.password)
+				} else {
+					user, err = register(m.username, m.password)
+				}
+
+				if err != nil {
+					m.state = stateError
+					m.errorMsg = err.Error()
+					return m, nil
+				}
+
+				m.userData = user
+				m.session = "./data/" + m.username + ".json"
+				m.state = stateSuccess
+				return m, nil
+			}
+		case stateError, stateSuccess:
+			if msg.String() == "enter" || msg.String() == "q" {
+				return m, tea.Quit
+			}
+		}
+
+	case tea.WindowSizeMsg:
+		m.input.Width = msg.Width
+	}
+
+	m.input, cmd = m.input.Update(msg)
+	return m, cmd
+}
+
+func (m model) View() string {
+	switch m.state {
+	case stateMenu:
+		return "\nWelcome to the Expense Tracker\n\n1) Register\n2) Login\n\nPress 'q' to quit.\n"
+	case stateInputUsername, stateInputPassword:
+		return fmt.Sprintf("\n%s:\n%s\n\n(Press Enter to continue)", strings.Title(m.input.Placeholder), m.input.View())
+	case stateSuccess:
+		return fmt.Sprintf("\n✅ Welcome %s! Your balance is $%.2f\nSession file: %s\n\nPress Enter to quit.\n", m.username, m.userData.Balance, m.session)
+	case stateError:
+		return fmt.Sprintf("\n❌ Error: %s\n\nPress Enter to quit.\n", m.errorMsg)
+	default:
+		return ""
+	}
+}
+
+// ========== Lógica de login y register ==========
 func login(user string, password string) (UserActivity, error) {
 	filePath := "./data/" + user + ".json"
-
 	data, err := os.ReadFile(filePath)
 	if err != nil {
-		return UserActivity{}, fmt.Errorf("user not found: %s", user)
+		return UserActivity{}, fmt.Errorf("user not found")
 	}
-
-	var userActivity UserActivity
-	err = json.Unmarshal(data, &userActivity)
-	if err != nil {
-		return UserActivity{}, fmt.Errorf("error parsing file: %v", err)
+	var ua UserActivity
+	if err := json.Unmarshal(data, &ua); err != nil {
+		return UserActivity{}, fmt.Errorf("error parsing file")
 	}
-
-	if password != userActivity.Password {
+	if password != ua.Password {
 		return UserActivity{}, fmt.Errorf("incorrect password")
 	}
-
-	return userActivity, nil
+	return ua, nil
 }
 
 func register(user string, password string) (UserActivity, error) {
 	filePath := "./data/" + user + ".json"
-
-	// Verificar si ya existe
 	if _, err := os.Stat(filePath); err == nil {
 		return UserActivity{}, fmt.Errorf("user already exists")
 	}
 
-	// Crear archivo
 	file, err := os.Create(filePath)
 	if err != nil {
-		return UserActivity{}, fmt.Errorf("error creating file: %v", err)
+		return UserActivity{}, fmt.Errorf("error creating file")
 	}
 	defer file.Close()
 
-	// Crear datos base del usuario
-	userActivity := UserActivity{
+	ua := UserActivity{
 		Balance:      0,
 		Password:     password,
 		Transactions: []Transaction{},
 	}
 
-	// Guardar en JSON
-	err = json.NewEncoder(file).Encode(userActivity)
-	if err != nil {
-		return UserActivity{}, fmt.Errorf("error writing file: %v", err)
+	if err := json.NewEncoder(file).Encode(ua); err != nil {
+		return UserActivity{}, fmt.Errorf("error writing file")
 	}
-
-	return userActivity, nil
+	return ua, nil
 }
 
+// ========== Main ==========
 func main() {
-	fmt.Println("Welcome to my expense tracker")
-	fmt.Println("=============================")
-	fmt.Println("Add User (1)")
-	fmt.Println("Login User (2)")
-
-	for {
-		var choice int8
-		fmt.Print("\nChoose an option: ")
-		fmt.Scanln(&choice)
-
-		switch choice {
-		case 1:
-			reader := bufio.NewReader(os.Stdin)
-
-			fmt.Print("Choose a username: ")
-			user, _ := reader.ReadString('\n')
-			user = strings.TrimSpace(user)
-
-			fmt.Print("Choose a password: ")
-			password, _ := reader.ReadString('\n')
-			password = strings.TrimSpace(password)
-
-			_, err := register(user, password)
-			if err != nil {
-				fmt.Println("Registration failed:", err)
-				continue
-			}
-
-			fmt.Println("User registered successfully!")
-
-		case 2:
-			reader := bufio.NewReader(os.Stdin)
-
-			fmt.Print("Your username: ")
-			user, _ := reader.ReadString('\n')
-			user = strings.TrimSpace(user)
-
-			fmt.Print("Your password: ")
-			password, _ := reader.ReadString('\n')
-			password = strings.TrimSpace(password)
-
-			userActivity, err := login(user, password)
-			if err != nil {
-				fmt.Println("Login failed:", err)
-				continue
-			}
-
-			fmt.Println("Login successful!")
-			fmt.Printf("Welcome, %s! Your current balance is: $%.2f\n", user, userActivity.Balance)
-
-		default:
-			fmt.Println("No valid Option")
-		}
+	if _, err := tea.NewProgram(initialModel()).Run(); err != nil {
+		fmt.Println("Error:", err)
+		os.Exit(1)
 	}
 }
