@@ -1,0 +1,22 @@
+{
+    "balance": 1500,
+    "password": "12345",
+    "transactions": [
+        {
+            "id": 1,
+            "type": "income",
+            "amount": 3000,
+            "category": "Salary",
+            "description": "My salary from my part-time job",
+            "date": "2025-08-28T15:04:05Z"
+        },
+        {
+            "id": 2,
+            "type": "expense",
+            "amount": 1500,
+            "category": "Games",
+            "description": "My new game",
+            "date": "2025-08-29T15:04:05Z"
+        }
+    ]
+}
