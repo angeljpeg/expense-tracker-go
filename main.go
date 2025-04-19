@@ -36,7 +36,7 @@ func login(user string, password string) (UserActivity, error) {
 
 	data, err := os.ReadFile(filePath)
 	if err != nil {
-		return UserActivity{}, fmt.Errorf("file not found: %s", filePath)
+		return UserActivity{}, fmt.Errorf("user not found: %s", user)
 	}
 
 	var userActivity UserActivity
@@ -47,6 +47,37 @@ func login(user string, password string) (UserActivity, error) {
 
 	if password != userActivity.Password {
 		return UserActivity{}, fmt.Errorf("incorrect password")
+	}
+
+	return userActivity, nil
+}
+
+func register(user string, password string) (UserActivity, error) {
+	filePath := "./data/" + user + ".json"
+
+	// Verificar si ya existe
+	if _, err := os.Stat(filePath); err == nil {
+		return UserActivity{}, fmt.Errorf("user already exists")
+	}
+
+	// Crear archivo
+	file, err := os.Create(filePath)
+	if err != nil {
+		return UserActivity{}, fmt.Errorf("error creating file: %v", err)
+	}
+	defer file.Close()
+
+	// Crear datos base del usuario
+	userActivity := UserActivity{
+		Balance:      0,
+		Password:     password,
+		Transactions: []Transaction{},
+	}
+
+	// Guardar en JSON
+	err = json.NewEncoder(file).Encode(userActivity)
+	if err != nil {
+		return UserActivity{}, fmt.Errorf("error writing file: %v", err)
 	}
 
 	return userActivity, nil
@@ -65,7 +96,24 @@ func main() {
 
 		switch choice {
 		case 1:
-			fmt.Println("Add User (not implemented yet)")
+			reader := bufio.NewReader(os.Stdin)
+
+			fmt.Print("Choose a username: ")
+			user, _ := reader.ReadString('\n')
+			user = strings.TrimSpace(user)
+
+			fmt.Print("Choose a password: ")
+			password, _ := reader.ReadString('\n')
+			password = strings.TrimSpace(password)
+
+			_, err := register(user, password)
+			if err != nil {
+				fmt.Println("Registration failed:", err)
+				continue
+			}
+
+			fmt.Println("User registered successfully!")
+
 		case 2:
 			reader := bufio.NewReader(os.Stdin)
 
