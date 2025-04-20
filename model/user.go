@@ -51,3 +51,19 @@ func register(user string, password string) (UserActivity, error) {
 	}
 	return ua, nil
 }
+
+func getBalance(user string) (int, error) {
+	filePath := "./data/" + user + ".json"
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return 0, fmt.Errorf("user not found")
+	}
+
+	var ua UserActivity
+
+	if err := json.Unmarshal(data, &ua); err != nil {
+		return 0, fmt.Errorf("error parsing file")
+	}
+
+	return int(ua.Balance), nil
+}
